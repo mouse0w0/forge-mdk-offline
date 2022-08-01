@@ -1,0 +1,74 @@
+name: Build
+on: 
+  release:
+    types: [published]
+defaults:
+  run:
+    shell: powershell
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: set up JDK 17
+      uses: actions/setup-java@v1
+      with:
+        java-version: 17
+    - name: Config
+      run: |
+          $version = "${{ github.event.release.name }}"
+          echo "MDK_VERSION=$version" >> $env:GITHUB_ENV
+          echo "MDK_NAME=forge-$version-mdk" >> $env:GITHUB_ENV
+          echo "MDK_ARCHIVE=forge-$version-mdk.zip" >> $env:GITHUB_ENV
+    - name: Download and Initialize
+      run: |
+          $url = "https://files.minecraftforge.net/maven/net/minecraftforge/forge/${{ env.MDK_VERSION }}/${{ env.MDK_ARCHIVE }}"
+          echo "Downloading $url"
+          mkdir build
+          cd build
+          curl $url -o mdk.zip
+          Expand-Archive .\mdk.zip .
+          rm mdk.zip
+          cd ..
+          mkdir ~\.gradle
+          mv gradle.properties ~\.gradle\gradle.properties
+    - name: genIntellijRuns
+      run: |
+          cd build
+          .\gradlew.bat genIntellijRuns
+    - name: genEclipseRuns
+      run: |
+          cd build
+          .\gradlew.bat genEclipseRuns
+    - name: genVSCodeRuns
+      run: |
+          cd build
+          .\gradlew.bat genVSCodeRuns
+    - name: prepareRunClient
+      run: |
+          cd build
+          .\gradlew.bat prepareRunClient
+    - name: prepareRunServer
+      run: |
+          cd build
+          .\gradlew.bat prepareRunServer
+    - name: prepareRunData
+      run: |
+          cd build
+          .\gradlew.bat prepareRunData
+    - name: Package
+      run: |
+          mkdir ${{ env.MDK_NAME }}
+          mv .\build .\${{ env.MDK_NAME }}\${{ env.MDK_NAME }}
+          mv ~\.gradle .\${{ env.MDK_NAME }}\.gradle
+          Compress-Archive .\${{ env.MDK_NAME }} "${{ env.MDK_ARCHIVE }}"
+    - name: Upload
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./${{ env.MDK_ARCHIVE }}
+        asset_name: ${{ env.MDK_ARCHIVE }}
+        asset_content_type: application/zip
+    
