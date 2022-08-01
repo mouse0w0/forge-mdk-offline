@@ -1,0 +1,59 @@
+name: Build
+on:
+  release:
+    types: [published]
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Config
+        run: |
+          Write-Output "${{ github.event.release.body }}" >> $env:GITHUB_ENV
+      - name: Setup Java
+        uses: actions/setup-java@v1
+        with:
+          java-version: ${{ env.java_version }}
+      - name: Initalize git repository
+        if: ${{ env.repo }}
+        run: |
+          New-Item -Type Directory ~\.gradle
+          Move-Item .\gradle.properties ~\.gradle\gradle.properties
+          New-Item -Type Directory ${{ env.archive_name }}
+          Set-Location ${{ env.archive_name }}
+          git clone -b ${{ env.branch }} ${{ env.repo }}
+          Get-ChildItem | Select-Object -ExpandProperty Name -First 1 | Set-Location
+          git checkout ${{ env.commit }}
+          Remove-Item .\.git -Recurse -Force
+      - name: Initalize zip
+        if: ${{ env.url }}
+        run: |
+          New-Item -Type Directory ~\.gradle
+          Move-Item .\gradle.properties ~\.gradle\gradle.properties
+          New-Item -Type Directory ${{ env.archive_name }}
+          Set-Location ${{ env.archive_name }}
+          curl ${{ env.url }} -o .\temp.zip
+          Expand-Archive .\temp.zip .\${{ env.archive_name }}
+          Remove-Item .\temp.zip
+      - name: Run Gradle Task
+        run: |
+          Set-Location ${{ env.archive_name }}
+          Get-ChildItem | Select-Object -ExpandProperty Name -First 1 | Set-Location
+          .\gradlew ${{ env.task }}
+      - name: Package
+        run: |
+          Move-Item ~\.gradle .\${{ env.archive_name }}\.gradle
+          Compress-Archive .\${{ env.archive_name }} ${{ env.archive_name }}.zip
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./${{ env.archive_name }}.zip
+          asset_name: ${{ env.archive_name }}.zip
+          asset_content_type: application/zip
+
